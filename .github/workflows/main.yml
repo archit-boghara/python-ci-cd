@@ -1,0 +1,204 @@
+
+name: Financial Data Visualization CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, '3.10']
+
+    steps:
+    - uses: actions/checkout@v3
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov flake8 black
+        
+    - name: Lint with flake8
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+        
+    - name: Format check with black
+      run: |
+        black --check .
+        
+    - name: Create test script
+      run: |
+        mkdir -p tests
+        cat > tests/test_stock_visualizer.py << 'EOF'
+        import unittest
+        import pandas as pd
+        import numpy as np
+        from unittest.mock import patch, MagicMock
+        import sys
+        import os
+
+        # Add the parent directory to path so we can import the main script
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        
+        # Import functions from your script
+        # Note: Replace 'stock_visualizer' with your actual script name without .py
+        try:
+            from stock_visualizer import get_stock_data, calculate_returns
+        except ImportError:
+            from test_pipeline import get_stock_data, calculate_returns
+
+        class TestStockVisualizer(unittest.TestCase):
+            @patch('yfinance.Ticker')
+            def test_get_stock_data(self, mock_ticker):
+                # Mock the yfinance Ticker to avoid actual API calls during testing
+                mock_instance = MagicMock()
+                mock_history = MagicMock()
+                mock_history.return_value = pd.DataFrame({
+                    'Close': [100, 101, 102],
+                    'Open': [99, 100, 101]
+                })
+                mock_instance.history = mock_history
+                mock_ticker.return_value = mock_instance
+                
+                result = get_stock_data(['AAPL'], period='1mo')
+                
+                # Check we got a DataFrame back
+                self.assertIsInstance(result, pd.DataFrame)
+                # Check mock was called with correct arguments
+                mock_instance.history.assert_called_with(period='1mo')
+                
+            def test_calculate_returns(self):
+                # Create test price data
+                test_prices = pd.DataFrame({
+                    'AAPL': [100, 110, 121],
+                    'MSFT': [200, 210, 231]
+                })
+                
+                daily_returns, cumulative_returns = calculate_returns(test_prices)
+                
+                # Check daily returns calculation
+                expected_daily_returns = pd.DataFrame({
+                    'AAPL': [np.nan, 0.10, 0.10],
+                    'MSFT': [np.nan, 0.05, 0.10]
+                })
+                pd.testing.assert_frame_equal(
+                    daily_returns.round(2), 
+                    expected_daily_returns.round(2),
+                    check_exact=False
+                )
+                
+                # Check cumulative returns calculation
+                expected_cum_returns = pd.DataFrame({
+                    'AAPL': [np.nan, 0.10, 0.21],
+                    'MSFT': [np.nan, 0.05, 0.155]
+                })
+                pd.testing.assert_frame_equal(
+                    cumulative_returns.round(3), 
+                    expected_cum_returns.round(3),
+                    check_exact=False
+                )
+
+        if __name__ == '__main__':
+            unittest.main()
+        EOF
+        
+    - name: Test with pytest
+      run: |
+        pytest tests/ --cov=. --cov-report=xml
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  build-and-publish:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools wheel
+    
+    - name: Create setup.py if it doesn't exist
+      run: |
+        if [ ! -f setup.py ]; then
+          cat > setup.py << 'EOF'
+        from setuptools import setup, find_packages
+
+        setup(
+            name="financial-data-viz",
+            version="0.1.0",
+            packages=find_packages(),
+            install_requires=[
+                "pandas>=1.5.0",
+                "numpy>=1.22.0",
+                "matplotlib>=3.5.0",
+                "seaborn>=0.12.0",
+                "yfinance>=0.2.12",
+            ],
+            python_requires=">=3.8",
+            description="Financial data visualization tools",
+            author="Your Name",
+            author_email="your.email@example.com",
+            url="https://github.com/yourusername/financial-data-viz",
+        )
+        EOF
+        fi
+    
+    - name: Build and create distribution
+      run: python -m build
+    
+    # Uncomment the following steps if you want to publish to PyPI
+    # You'll need to add PyPI secrets to your GitHub repository
+    
+    # - name: Publish to Test PyPI
+    #   uses: pypa/gh-action-pypi-publish@release/v1
+    #   with:
+    #     user: __token__
+    #     password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    #     repository_url: https://test.pypi.org/legacy/
+    #     skip_existing: true
+    
+    # - name: Publish to PyPI
+    #   if: startsWith(github.ref, 'refs/tags')
+    #   uses: pypa/gh-action-pypi-publish@release/v1
+    #   with:
+    #     user: __token__
+    #     password: ${{ secrets.PYPI_API_TOKEN }}
+    
+    - name: Create Release Artifacts
+      run: |
+        mkdir -p artifacts
+        cp dist/* artifacts/
+        cp README.md artifacts/ 2>/dev/null || echo "No README.md found"
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: financial-data-viz-package
+        path: artifacts/
