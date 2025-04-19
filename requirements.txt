@@ -1,24 +1,16 @@
-# API interaction
-requests==2.31.0
+# Core data analysis and visualization libraries
+pandas>=1.5.0
+numpy>=1.22.0
+matplotlib>=3.5.0
+seaborn>=0.12.0
 
-# Data processing
-pandas==2.1.1
-numpy==1.26.0
-
-# Data visualization
-matplotlib==3.8.0
-seaborn==0.13.0
-
-# Environment configuration
-python-dotenv==1.0.0
+# Financial data fetching
+yfinance>=0.2.12
 
 # Testing
-pytest==7.4.2
-pytest-cov==4.1.0
+pytest>=7.0.0
+pytest-cov>=4.0.0
 
 # Code quality
-flake8==6.1.0
-black==23.9.1
-
-# Documentation
-sphinx==7.2.6
+flake8>=6.0.0
+black>=23.0.0
