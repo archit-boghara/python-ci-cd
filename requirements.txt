@@ -1,0 +1,24 @@
+# API interaction
+requests==2.31.0
+
+# Data processing
+pandas==2.1.1
+numpy==1.26.0
+
+# Data visualization
+matplotlib==3.8.0
+seaborn==0.13.0
+
+# Environment configuration
+python-dotenv==1.0.0
+
+# Testing
+pytest==7.4.2
+pytest-cov==4.1.0
+
+# Code quality
+flake8==6.1.0
+black==23.9.1
+
+# Documentation
+sphinx==7.2.6
